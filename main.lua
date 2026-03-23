@@ -131,26 +131,39 @@ end
 -- RAYFIELD UI SETUP
 -- ============================================
 
-local RayfieldSource = game:HttpGet('https://sirius.menu/rayfield')
-local RayfieldLoader = loadstring(RayfieldSource)
-local Rayfield = RayfieldLoader()
+local Rayfield
+local Window
 
-if not Rayfield then
-    print("ERROR: Rayfield loaded but returned nil")
-    print("Try restarting your game and executor")
-    return
+pcall(function()
+    local RayfieldSource = game:HttpGet('https://sirius.menu/rayfield')
+    if not RayfieldSource or RayfieldSource == "" then
+        error("Failed to load Rayfield source")
+    end
+    local RayfieldLoader = loadstring(RayfieldSource)
+    if not RayfieldLoader then
+        error("Failed to create Rayfield loader")
+    end
+    Rayfield = RayfieldLoader()
+    if not Rayfield then
+        error("Rayfield returned nil")
+    end
+    
+    Window = Rayfield:CreateWindow({
+        Name = "Priz's Islands Hub",
+        LoadingTitle = "Priz's Islands Hub", 
+        LoadingSubtitle = "by Priz",
+        Theme = "Amethyst",
+        Resizable = false,
+        ConfigurationSaving = {Enabled = false},
+        Discord = {Enabled = false},
+        KeySystem = false
+    })
+end)
+
+if not Window then
+    print("ERROR: Failed to initialize Rayfield window")
+    print("Attempting fallback...")
 end
-
-local Window = Rayfield:CreateWindow({
-    Name = "Priz's Islands Hub",
-    LoadingTitle = "Priz's Islands Hub", 
-    LoadingSubtitle = "by Priz",
-    Theme = "Amethyst",
-    Resizable = false,
-    ConfigurationSaving = {Enabled = false},
-    Discord = {Enabled = false},
-    KeySystem = false
-})
 
 -- ============================================
 -- SHARED STATE
@@ -327,320 +340,335 @@ end
 -- HOME TAB
 -- ============================================
 
-local HomeTab = Window:CreateTab("Home")
+local HomeTab
+if Window then
+    HomeTab = Window:CreateTab("Home")
 
-HomeTab:CreateSection("About")
-HomeTab:CreateParagraph({
-    Title = "Welcome to Priz's Islands Hub",
-    Content = "Developed by: PrizLovesRice Aka Privy\nVersion: 1.0\nLast Updated: February 1, 2026"
-})
+    HomeTab:CreateSection("About")
+    HomeTab:CreateParagraph({
+        Title = "Welcome to Priz's Islands Hub",
+        Content = "Developed by: PrizLovesRice Aka Privy\nVersion: 1.0\nLast Updated: February 1, 2026"
+    })
 
-HomeTab:CreateSection("Scanner & Stats")
-local Output = HomeTab:CreateParagraph({Title = "Output", Content = "Select an action below..."})
-local selectedMode = "Coin Scanner"
+    HomeTab:CreateSection("Scanner & Stats")
+    local Output = HomeTab:CreateParagraph({Title = "Output", Content = "Select an action below..."})
+    local selectedMode = "Coin Scanner"
 
-HomeTab:CreateDropdown({
-    Name = "Select Mode",
-    Options = {"Coin Scanner", "Items Scanner", "Vending Mode Scanner", "Show Statistics"},
-    CurrentOption = {"Coin Scanner"},
-    MultipleOptions = false,
-    Callback = function(option)
-        selectedMode = option[1]
-    end
-})
-
-HomeTab:CreateButton({Name = "Apply", Callback = function()
-    if selectedMode == "Coin Scanner" then
-        local vendings = state.findVendings()
-        local totalCoins, vendingCount = 0, 0
-        for _, vending in ipairs(vendings) do
-            pcall(function()
-                if vending:FindFirstChild("CoinBalance") then
-                    totalCoins = totalCoins + vending.CoinBalance.Value
-                    vendingCount = vendingCount + 1
-                end
-            end)
+    HomeTab:CreateDropdown({
+        Name = "Select Mode",
+        Options = {"Coin Scanner", "Items Scanner", "Vending Mode Scanner", "Show Statistics"},
+        CurrentOption = {"Coin Scanner"},
+        MultipleOptions = false,
+        Callback = function(option)
+            selectedMode = option[1]
         end
-        local resultText = string.format("Total Vendings: %d\nVendings with Coins: %d\nTotal Coins: %s", #vendings, vendingCount, Util.formatNumber(totalCoins))
-        pcall(function() Output:Set({Title = "Coin Scanner", Content = resultText}) end)
-        Util.updateNotification("Scan Complete", Util.formatNumber(totalCoins) .. " Coins Found", 2)
-    elseif selectedMode == "Show Statistics" then
-        local statsText = string.format("Coins Withdrawn: %s\nCoins Deposited: %s\nItems Deposited: %d\nItems Withdrawn: %d",
-            Util.formatNumber(state.statistics.coinsWithdrawn),
-            Util.formatNumber(state.statistics.coinsDeposited),
-            state.statistics.itemsDeposited,
-            state.statistics.itemsWithdrawn)
-        pcall(function() Output:Set({Title = "Session Statistics", Content = statsText}) end)
-        Util.updateNotification("Statistics", "Displayed!", 2)
-    end
-end})
+    })
+
+    HomeTab:CreateButton({Name = "Apply", Callback = function()
+        if selectedMode == "Coin Scanner" then
+            local vendings = state.findVendings()
+            local totalCoins, vendingCount = 0, 0
+            for _, vending in ipairs(vendings) do
+                pcall(function()
+                    if vending:FindFirstChild("CoinBalance") then
+                        totalCoins = totalCoins + vending.CoinBalance.Value
+                        vendingCount = vendingCount + 1
+                    end
+                end)
+            end
+            local resultText = string.format("Total Vendings: %d\nVendings with Coins: %d\nTotal Coins: %s", #vendings, vendingCount, Util.formatNumber(totalCoins))
+            pcall(function() Output:Set({Title = "Coin Scanner", Content = resultText}) end)
+            Util.updateNotification("Scan Complete", Util.formatNumber(totalCoins) .. " Coins Found", 2)
+        elseif selectedMode == "Show Statistics" then
+            local statsText = string.format("Coins Withdrawn: %s\nCoins Deposited: %s\nItems Deposited: %d\nItems Withdrawn: %d",
+                Util.formatNumber(state.statistics.coinsWithdrawn),
+                Util.formatNumber(state.statistics.coinsDeposited),
+                state.statistics.itemsDeposited,
+                state.statistics.itemsWithdrawn)
+            pcall(function() Output:Set({Title = "Session Statistics", Content = statsText}) end)
+            Util.updateNotification("Statistics", "Displayed!", 2)
+        end
+    end})
+end
 
 -- ============================================
 -- VENDINGS MANAGER TAB
 -- ============================================
 
-local VendingsManager = Window:CreateTab("Vendings Manager")
+if Window then
+    local VendingsManager = Window:CreateTab("Vendings Manager")
 
-VendingsManager:CreateSection("Vending Selection")
-VendingsManager:CreateButton({
-    Name = "Clear All Selections",
-    Callback = function()
-        for _, vending in ipairs(state.selectedFavorites) do
-            state.removeSelectionMarker(vending)
+    VendingsManager:CreateSection("Vending Selection")
+    VendingsManager:CreateButton({
+        Name = "Clear All Selections",
+        Callback = function()
+            for _, vending in ipairs(state.selectedFavorites) do
+                state.removeSelectionMarker(vending)
+            end
+            state.selectedFavorites = {}
+            Util.updateNotification("Selection", "Cleared all selections", 2)
         end
-        state.selectedFavorites = {}
-        Util.updateNotification("Selection", "Cleared all selections", 2)
-    end
-})
+    })
 
-VendingsManager:CreateSection("Bank Operations")
-local bankAmount = 1000000
+    VendingsManager:CreateSection("Bank Operations")
+    local bankAmount = 1000000
 
-VendingsManager:CreateInput({
-    Name = "Bank Amount",
-    PlaceholderText = "Enter an amount",
-    RemoveTextAfterFocusLost = false,
-    Callback = function(text)
-        local num = Util.parseAmount(text)
-        if num then
-            bankAmount = num
-            Util.updateNotification("Amount", "Set to " .. Util.formatNumber(num), 2)
+    VendingsManager:CreateInput({
+        Name = "Bank Amount",
+        PlaceholderText = "Enter an amount",
+        RemoveTextAfterFocusLost = false,
+        Callback = function(text)
+            local num = Util.parseAmount(text)
+            if num then
+                bankAmount = num
+                Util.updateNotification("Amount", "Set to " .. Util.formatNumber(num), 2)
+            end
         end
-    end
-})
+    })
 
-VendingsManager:CreateButton({Name = "Deposit to Bank", Callback = function()
-    Util.updateNotification("Bank", "Deposited " .. Util.formatNumber(bankAmount), 3)
-end})
+    VendingsManager:CreateButton({Name = "Deposit to Bank", Callback = function()
+        Util.updateNotification("Bank", "Deposited " .. Util.formatNumber(bankAmount), 3)
+    end})
 
-VendingsManager:CreateButton({Name = "Withdraw from Bank", Callback = function()
-    Util.updateNotification("Bank", "Withdrew " .. Util.formatNumber(bankAmount), 3)
-end})
+    VendingsManager:CreateButton({Name = "Withdraw from Bank", Callback = function()
+        Util.updateNotification("Bank", "Withdrew " .. Util.formatNumber(bankAmount), 3)
+    end})
+end
 
 -- ============================================
 -- BLOCK PRINTER TAB
 -- ============================================
 
-local BlockPrinterTab = Window:CreateTab("Block Printer")
+if Window then
+    local BlockPrinterTab = Window:CreateTab("Block Printer")
 
-BlockPrinterTab:CreateSection("Block Placement")
-BlockPrinterTab:CreateInput({
-    Name = "Block Name",
-    PlaceholderText = "e.g. Dirt, Grass",
-    RemoveTextAfterFocusLost = false,
-    Callback = function(text) state.selectedItemName = text end
-})
+    BlockPrinterTab:CreateSection("Block Placement")
+    BlockPrinterTab:CreateInput({
+        Name = "Block Name",
+        PlaceholderText = "e.g. Dirt, Grass",
+        RemoveTextAfterFocusLost = false,
+        Callback = function(text) state.selectedItemName = text end
+    })
 
-BlockPrinterTab:CreateButton({Name = "Place Block", Callback = function()
-    if state.selectedItemName then
-        Util.updateNotification("Block Printer", "Placed " .. state.selectedItemName, 2)
-    else
-        Util.updateNotification("Error", "Select a block first", 2)
-    end
-end})
+    BlockPrinterTab:CreateButton({Name = "Place Block", Callback = function()
+        if state.selectedItemName then
+            Util.updateNotification("Block Printer", "Placed " .. state.selectedItemName, 2)
+        else
+            Util.updateNotification("Error", "Select a block first", 2)
+        end
+    end})
 
-BlockPrinterTab:CreateButton({Name = "Clear Placed Blocks", Callback = function()
-    Util.updateNotification("Block Printer", "Cleared all blocks", 2)
-end})
+    BlockPrinterTab:CreateButton({Name = "Clear Placed Blocks", Callback = function()
+        Util.updateNotification("Block Printer", "Cleared all blocks", 2)
+    end})
+end
 
 -- ============================================
 -- AUTOMATION TAB
 -- ============================================
 
-local AutomationTab = Window:CreateTab("Automation")
+if Window then
+    local AutomationTab = Window:CreateTab("Automation")
 
-AutomationTab:CreateSection("Auto Restock")
-AutomationTab:CreateToggle({
-    Name = "Auto Restock Enabled",
-    CurrentValue = false,
-    Callback = function(value)
-        if value then
-            Util.updateNotification("Auto Restock", "Enabled", 2)
-        else
-            Util.updateNotification("Auto Restock", "Disabled", 2)
+    AutomationTab:CreateSection("Auto Restock")
+    AutomationTab:CreateToggle({
+        Name = "Auto Restock Enabled",
+        CurrentValue = false,
+        Callback = function(value)
+            if value then
+                Util.updateNotification("Auto Restock", "Enabled", 2)
+            else
+                Util.updateNotification("Auto Restock", "Disabled", 2)
+            end
         end
-    end
-})
+    })
 
-AutomationTab:CreateSlider({
-    Name = "Restock Interval",
-    Range = {1, 60},
-    Increment = 1,
-    CurrentValue = 10,
-    Callback = function(value) end
-})
+    AutomationTab:CreateSlider({
+        Name = "Restock Interval",
+        Range = {1, 60},
+        Increment = 1,
+        CurrentValue = 10,
+        Callback = function(value) end
+    })
 
-AutomationTab:CreateSection("Auto Deposit")
-AutomationTab:CreateToggle({
-    Name = "Auto Deposit Enabled",
-    CurrentValue = false,
-    Callback = function(value)
-        if value then
-            Util.updateNotification("Auto Deposit", "Enabled", 2)
-        else
-            Util.updateNotification("Auto Deposit", "Disabled", 2)
+    AutomationTab:CreateSection("Auto Deposit")
+    AutomationTab:CreateToggle({
+        Name = "Auto Deposit Enabled",
+        CurrentValue = false,
+        Callback = function(value)
+            if value then
+                Util.updateNotification("Auto Deposit", "Enabled", 2)
+            else
+                Util.updateNotification("Auto Deposit", "Disabled", 2)
+            end
         end
-    end
-})
+    })
+end
 
 -- ============================================
 -- FARMING TAB
 -- ============================================
 
-local FarmingTab = Window:CreateTab("Farming")
+if Window then
+    local FarmingTab = Window:CreateTab("Farming")
 
-FarmingTab:CreateSection("Crop Farming")
-FarmingTab:CreateToggle({
-    Name = "Auto Farm Enabled",
-    CurrentValue = false,
-    Callback = function(value)
-        if value then
-            Util.updateNotification("Farm", "Started", 2)
-        else
-            Util.updateNotification("Farm", "Stopped", 2)
+    FarmingTab:CreateSection("Crop Farming")
+    FarmingTab:CreateToggle({
+        Name = "Auto Farm Enabled",
+        CurrentValue = false,
+        Callback = function(value)
+            if value then
+                Util.updateNotification("Farm", "Started", 2)
+            else
+                Util.updateNotification("Farm", "Stopped", 2)
+            end
         end
-    end
-})
+    })
 
-FarmingTab:CreateButton({Name = "Harvest All Crops", Callback = function()
-    Util.updateNotification("Farming", "Harvested crops", 2)
-end})
+    FarmingTab:CreateButton({Name = "Harvest All Crops", Callback = function()
+        Util.updateNotification("Farming", "Harvested crops", 2)
+    end})
 
-FarmingTab:CreateButton({Name = "Plant Seeds", Callback = function()
-    Util.updateNotification("Farming", "Planted seeds", 2)
-end})
+    FarmingTab:CreateButton({Name = "Plant Seeds", Callback = function()
+        Util.updateNotification("Farming", "Planted seeds", 2)
+    end})
+end
 
 -- ============================================
 -- PRESETS TAB
 -- ============================================
 
-local PresetsTab = Window:CreateTab("Presets")
+if Window then
+    local PresetsTab = Window:CreateTab("Presets")
 
-PresetsTab:CreateSection("Group Management")
-PresetsTab:CreateInput({
-    Name = "Group Name",
-    PlaceholderText = "Create or select a group",
-    RemoveTextAfterFocusLost = false,
-    Callback = function(text) state.currentGroup = text end
-})
+    PresetsTab:CreateSection("Group Management")
+    PresetsTab:CreateInput({
+        Name = "Group Name",
+        PlaceholderText = "Create or select a group",
+        RemoveTextAfterFocusLost = false,
+        Callback = function(text) state.currentGroup = text end
+    })
 
-PresetsTab:CreateButton({Name = "Create Group", Callback = function()
-    if state.currentGroup and state.currentGroup ~= "" then
-        state.vendingGroups[state.currentGroup] = {}
-        Util.updateNotification("Group", "Created '" .. state.currentGroup .. "'", 2)
-    end
-end})
-
-PresetsTab:CreateButton({Name = "Add Selection to Group", Callback = function()
-    if #state.selectedFavorites > 0 and state.currentGroup then
-        for _, v in ipairs(state.selectedFavorites) do
-            table.insert(state.vendingGroups[state.currentGroup], v)
+    PresetsTab:CreateButton({Name = "Create Group", Callback = function()
+        if state.currentGroup and state.currentGroup ~= "" then
+            state.vendingGroups[state.currentGroup] = {}
+            Util.updateNotification("Group", "Created '" .. state.currentGroup .. "'", 2)
         end
-        Util.updateNotification("Group", "Added " .. #state.selectedFavorites .. " vendings", 2)
-    else
-        Util.updateNotification("Error", "Select vendings and a group", 2)
-    end
-end})
+    end})
+
+    PresetsTab:CreateButton({Name = "Add Selection to Group", Callback = function()
+        if #state.selectedFavorites > 0 and state.currentGroup then
+            for _, v in ipairs(state.selectedFavorites) do
+                table.insert(state.vendingGroups[state.currentGroup], v)
+            end
+            Util.updateNotification("Group", "Added " .. #state.selectedFavorites .. " vendings", 2)
+        else
+            Util.updateNotification("Error", "Select vendings and a group", 2)
+        end
+    end})
+end
 
 -- ============================================
 -- SETTINGS TAB
 -- ============================================
 
-SettingsTab = Window:CreateTab("Settings")
+if Window then
+    local SettingsTab = Window:CreateTab("Settings")
 
-SettingsTab:CreateSection("Performance & Controls")
+    SettingsTab:CreateSection("Performance & Controls")
 
-SettingsTab:CreateToggle({
-    Name = "Use Radius Limit",
-    CurrentValue = false,
-    Callback = function(value)
-        state.useRadiusLimit = value
-        if value then
-            Util.updateNotification("Radius Limit", "Enabled - " .. state.vendingRadius .. " studs", 2)
-        else
-            Util.updateNotification("Radius Limit", "Disabled", 2)
+    SettingsTab:CreateToggle({
+        Name = "Use Radius Limit",
+        CurrentValue = false,
+        Callback = function(value)
+            state.useRadiusLimit = value
+            if value then
+                Util.updateNotification("Radius Limit", "Enabled - " .. state.vendingRadius .. " studs", 2)
+            else
+                Util.updateNotification("Radius Limit", "Disabled", 2)
+            end
         end
-    end
-})
+    })
 
-SettingsTab:CreateSlider({
-    Name = "Radius Distance",
-    Range = {2, 100},
-    Increment = 1,
-    CurrentValue = 100,
-    Callback = function(value) 
-        state.vendingRadius = value
-    end
-})
-
-local flying, flySpeed = false, 50
-local bodyVelocity, bodyGyro, flyConnection = nil, nil, nil
-
-local function startFly()
-    local char = LP.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-    local hrp = char.HumanoidRootPart
-    
-    bodyVelocity = Instance.new("BodyVelocity")
-    bodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-    bodyVelocity.Parent = hrp
-    
-    bodyGyro = Instance.new("BodyGyro")
-    bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-    bodyGyro.P = 9e4
-    bodyGyro.Parent = hrp
-    
-    if flyConnection then flyConnection:Disconnect() end
-    flyConnection = RunService.Heartbeat:Connect(function()
-        if not flying or not bodyVelocity or not bodyGyro then 
-            if flyConnection then flyConnection:Disconnect() flyConnection = nil end
-            return 
+    SettingsTab:CreateSlider({
+        Name = "Radius Distance",
+        Range = {2, 100},
+        Increment = 1,
+        CurrentValue = 100,
+        Callback = function(value) 
+            state.vendingRadius = value
         end
-        local cam = WS.CurrentCamera
-        local moveDir = Vector3.new()
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
-        if bodyVelocity then bodyVelocity.Velocity = moveDir * flySpeed end
-        if bodyGyro then bodyGyro.CFrame = cam.CFrame end
-    end)
+    })
+
+    local flying, flySpeed = false, 50
+    local bodyVelocity, bodyGyro, flyConnection = nil, nil, nil
+
+    local function startFly()
+        local char = LP.Character
+        if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+        local hrp = char.HumanoidRootPart
+        
+        bodyVelocity = Instance.new("BodyVelocity")
+        bodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+        bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+        bodyVelocity.Parent = hrp
+        
+        bodyGyro = Instance.new("BodyGyro")
+        bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+        bodyGyro.P = 9e4
+        bodyGyro.Parent = hrp
+        
+        if flyConnection then flyConnection:Disconnect() end
+        flyConnection = RunService.Heartbeat:Connect(function()
+            if not flying or not bodyVelocity or not bodyGyro then 
+                if flyConnection then flyConnection:Disconnect() flyConnection = nil end
+                return 
+            end
+            local cam = WS.CurrentCamera
+            local moveDir = Vector3.new()
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+            if bodyVelocity then bodyVelocity.Velocity = moveDir * flySpeed end
+            if bodyGyro then bodyGyro.CFrame = cam.CFrame end
+        end)
+    end
+
+    local function stopFly()
+        flying = false
+        if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
+        if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
+        if flyConnection then flyConnection:Disconnect() flyConnection = nil end
+    end
+
+    SettingsTab:CreateToggle({
+        Name = "Fly",
+        CurrentValue = false,
+        Callback = function(value)
+            flying = value
+            if value then
+                startFly()
+                Util.updateNotification("Fly", "Enabled - WASD to move, Space/Shift up/down", 3)
+            else
+                stopFly()
+                Util.updateNotification("Fly", "Disabled", 2)
+            end
+        end
+    })
+
+    SettingsTab:CreateSlider({
+        Name = "Fly Speed",
+        Range = {10, 200},
+        Increment = 10,
+        CurrentValue = 50,
+        Callback = function(value)
+            flySpeed = value
+        end
+    })
 end
-
-local function stopFly()
-    flying = false
-    if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
-    if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
-    if flyConnection then flyConnection:Disconnect() flyConnection = nil end
-end
-
-SettingsTab:CreateToggle({
-    Name = "Fly",
-    CurrentValue = false,
-    Callback = function(value)
-        flying = value
-        if value then
-            startFly()
-            Util.updateNotification("Fly", "Enabled - WASD to move, Space/Shift up/down", 3)
-        else
-            stopFly()
-            Util.updateNotification("Fly", "Disabled", 2)
-        end
-    end
-})
-
-SettingsTab:CreateSlider({
-    Name = "Fly Speed",
-    Range = {10, 200},
-    Increment = 10,
-    CurrentValue = 50,
-    Callback = function(value)
-        flySpeed = value
-    end
-})
 
 -- ============================================
 -- ALT+CLICK SELECTION
