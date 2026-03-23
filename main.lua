@@ -13,10 +13,136 @@ local HttpService = game:GetService("HttpService")
 
 local LP = Players.LocalPlayer
 
--- Load Utilities and Constants
-local Util = require(script.Parent.shared.Utilities)
-local Constants = require(script.Parent.shared.Constants)
-local Network = require(script.Parent.shared.Network)
+-- ============================================
+-- INLINE UTILITIES (No require needed)
+-- ============================================
+
+local Util = {}
+
+function Util.formatNumber(num)
+    if num >= 1000000000 then
+        return string.format("%.2fB", num / 1000000000)
+    elseif num >= 1000000 then
+        return string.format("%.2fM", num / 1000000)
+    elseif num >= 1000 then
+        return string.format("%.2fK", num / 1000)
+    else
+        return tostring(num)
+    end
+end
+
+function Util.parseAmount(text)
+    if not text or text == "" then return nil end
+    local num = tonumber(text)
+    if num then return num end
+    text = text:upper():gsub("%s+", "")
+    local numPart, suffix = text:match("^([%d%.]+)([KMB])$")
+    if not numPart then return nil end
+    num = tonumber(numPart)
+    if not num then return nil end
+    if suffix == "K" then return math.floor(num * 1000)
+    elseif suffix == "M" then return math.floor(num * 1000000)
+    elseif suffix == "B" then return math.floor(num * 1000000000)
+    end
+    return nil
+end
+
+function Util.getDisplayName(obj)
+    if not obj then return "Unknown" end
+    local displayNameValue = obj:FindFirstChild("DisplayName")
+    if displayNameValue and displayNameValue:IsA("StringValue") then
+        return displayNameValue.Value
+    end
+    return obj.Name
+end
+
+function Util.IsTaken(Position)
+    for _,v in next, WS.Islands:GetDescendants() do
+        if v:IsA("BasePart") and v.Name ~= "Collision" then
+            if (v.Position - Position).magnitude <= 2 then
+                return true
+            end
+        end
+    end
+end
+
+local activeNotifications = {}
+local notificationSpacing = 45
+
+function Util.updateNotification(title, content, duration)
+    task.spawn(function()
+        pcall(function()
+            local playerGui = LP:WaitForChild("PlayerGui")
+            local screenGui = Instance.new("ScreenGui")
+            screenGui.ResetOnSpawn = false
+            screenGui.Parent = playerGui
+            local frame = Instance.new("Frame")
+            frame.Parent = screenGui
+            frame.AnchorPoint = Vector2.new(1, 0.5)
+            if title == "Priz's Islands Hub" then
+                frame.Size = UDim2.fromOffset(500, 150)
+            else
+                frame.Size = UDim2.fromOffset(300, 40)
+            end
+            frame.BackgroundTransparency = 1
+            local TextLabel = Instance.new("TextLabel")
+            TextLabel.Parent = frame
+            TextLabel.Size = UDim2.fromScale(1, 1)
+            TextLabel.BackgroundTransparency = 1
+            TextLabel.RichText = true
+            TextLabel.TextWrapped = true
+            TextLabel.TextScaled = true
+            TextLabel.Text = title .. ": " .. content
+            TextLabel.Font = Enum.Font.FredokaOne
+            TextLabel.TextXAlignment = Enum.TextXAlignment.Left
+            TextLabel.TextYAlignment = Enum.TextYAlignment.Center
+            TextLabel.TextColor3 = Color3.fromRGB(120, 180, 255)
+            TextLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+            TextLabel.TextStrokeTransparency = 0.5
+            TextLabel.TextTransparency = 1
+            table.insert(activeNotifications, screenGui)
+            local yOffset = 0.93 - ((#activeNotifications - 1) * (notificationSpacing / 1080))
+            frame.Position = UDim2.new(0.98, 0, yOffset, 0)
+            for i = 1, 10 do
+                task.wait(0.02)
+                TextLabel.TextTransparency = 1 - (i / 10)
+            end
+            task.wait(duration or 3)
+            for i = 1, 10 do
+                task.wait(0.04)
+                TextLabel.TextTransparency = i / 10
+            end
+            task.wait(0.1)
+            for i, notif in ipairs(activeNotifications) do
+                if notif == screenGui then
+                    table.remove(activeNotifications, i)
+                    break
+                end
+            end
+            screenGui:Destroy()
+        end)
+    end)
+end
+
+local Constants = {
+    MAX_SELECTIONS = 100,
+    MAX_HISTORY = 50,
+    MAX_VENDING_BALANCE = 5000000000,
+    VENDING_LIMIT = 5000000000,
+    DEFAULT_HOTKEYS = {
+        withdrawAll = Enum.KeyCode.F1,
+        depositAll = Enum.KeyCode.F2,
+        selectRandom = Enum.KeyCode.F3,
+        scanVendings = Enum.KeyCode.F4,
+        emptyAll = Enum.KeyCode.F5
+    },
+    DEFAULT_SETTINGS = {
+        theme = "Amethyst",
+        radius = 100,
+        useRadius = false,
+        processMode = true
+    }
+}
 
 -- Rayfield UI Library
 local RayfieldSource = game:HttpGet('https://sirius.menu/rayfield')
@@ -384,15 +510,19 @@ end)
 -- LOAD ALL MODULES
 -- ============================================
 
-local modules = {
-    require(script.Parent.modules.Home),
-    require(script.Parent.modules.VendingsManager),
-    require(script.Parent.modules.BlockPrinter),
-    require(script.Parent.modules.Automation),
-    require(script.Parent.modules.Farming),
-    require(script.Parent.modules.Settings),
-    require(script.Parent.modules.Presets),
-}
+-- Pass utilities and constants to modules
+state.Util = Util
+state.Constants = Constants
+
+local Home = loadstring(game:HttpGet('https://raw.githubusercontent.com/PrizLovesRice1/Roblox-Islands/main/modules/Home.lua'))()
+local VendingsManager = loadstring(game:HttpGet('https://raw.githubusercontent.com/PrizLovesRice1/Roblox-Islands/main/modules/VendingsManager.lua'))()
+local BlockPrinter = loadstring(game:HttpGet('https://raw.githubusercontent.com/PrizLovesRice1/Roblox-Islands/main/modules/BlockPrinter.lua'))()
+local Automation = loadstring(game:HttpGet('https://raw.githubusercontent.com/PrizLovesRice1/Roblox-Islands/main/modules/Automation.lua'))()
+local Farming = loadstring(game:HttpGet('https://raw.githubusercontent.com/PrizLovesRice1/Roblox-Islands/main/modules/Farming.lua'))()
+local Settings = loadstring(game:HttpGet('https://raw.githubusercontent.com/PrizLovesRice1/Roblox-Islands/main/modules/Settings.lua'))()
+local Presets = loadstring(game:HttpGet('https://raw.githubusercontent.com/PrizLovesRice1/Roblox-Islands/main/modules/Presets.lua'))()
+
+local modules = {Home, VendingsManager, BlockPrinter, Automation, Farming, Settings, Presets}
 
 for _, moduleFunc in ipairs(modules) do
     task.spawn(function()

@@ -6,9 +6,9 @@
 local HttpService = game:GetService("HttpService")
 local RS = game:GetService("ReplicatedStorage")
 local WS = game:GetService("Workspace")
-local Util = require(script.Parent.Parent.shared.Utilities)
 
 return function(Window, state)
+    local Util = state.Util
     local PresetsTab = Window:CreateTab("Presets")
     
     PresetsTab:CreateParagraph({

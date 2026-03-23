@@ -8,9 +8,9 @@ local RS = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 
 local LP = Players.LocalPlayer
-local Util = require(script.Parent.Parent.shared.Utilities)
 
 return function(Window, state)
+    local Util = state.Util
     local AutomationTab = Window:CreateTab("Automation")
     
     AutomationTab:CreateSection("Auto-Restock Vendings")

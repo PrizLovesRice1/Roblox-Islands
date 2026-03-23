@@ -6,10 +6,9 @@
 local HttpService = game:GetService("HttpService")
 local RS = game:GetService("ReplicatedStorage")
 
-local Util = require(script.Parent.Parent.shared.Utilities)
-local Constants = require(script.Parent.Parent.shared.Constants)
-
 return function(Window, state)
+    local Util = state.Util
+    local Constants = state.Constants
     local VendingsManager = Window:CreateTab("Vendings Manager")
     
     VendingsManager:CreateParagraph({

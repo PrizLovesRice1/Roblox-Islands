@@ -9,10 +9,10 @@ local WS = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
 
 local LP = Players.LocalPlayer
-local Util = require(script.Parent.Parent.shared.Utilities)
-local Constants = require(script.Parent.Parent.shared.Constants)
 
 return function(Window, state)
+    local Util = state.Util
+    local Constants = state.Constants
     local HomeTab = Window:CreateTab("Home")
     
     -- About section

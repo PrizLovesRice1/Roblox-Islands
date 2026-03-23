@@ -11,10 +11,10 @@ local Lighting = game:GetService("Lighting")
 
 local LP = Players.LocalPlayer
 local WS = game.Workspace
-local Util = require(script.Parent.Parent.shared.Utilities)
-local Constants = require(script.Parent.Parent.shared.Constants)
 
 return function(Window, state)
+    local Util = state.Util
+    local Constants = state.Constants
     local SettingsTab = Window:CreateTab("Settings")
     
     SettingsTab:CreateSection("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
