@@ -1,8 +1,8 @@
 --[[
-    Priz's Islands Hub - SINGLE FILE VERSION
+    Priz's Islands Hub - Main Entry Point
     Advanced automation and management for Roblox Islands
     
-    All modules are built into this single file
+    RUN THIS FILE ONLY - All modules will be loaded automatically
 ]]--
 
 local Players = game:GetService("Players")
@@ -10,14 +10,11 @@ local RS = game:GetService("ReplicatedStorage")
 local WS = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
-local CollectionService = game:GetService("CollectionService")
-local RunService = game:GetService("RunService")
-local Lighting = game:GetService("Lighting")
 
 local LP = Players.LocalPlayer
 
 -- ============================================
--- UTILITIES
+-- INLINE UTILITIES (No require needed)
 -- ============================================
 
 local Util = {}
@@ -127,10 +124,27 @@ function Util.updateNotification(title, content, duration)
     end)
 end
 
--- ============================================
--- RAYFIELD UI SETUP
--- ============================================
+local Constants = {
+    MAX_SELECTIONS = 100,
+    MAX_HISTORY = 50,
+    MAX_VENDING_BALANCE = 5000000000,
+    VENDING_LIMIT = 5000000000,
+    DEFAULT_HOTKEYS = {
+        withdrawAll = Enum.KeyCode.F1,
+        depositAll = Enum.KeyCode.F2,
+        selectRandom = Enum.KeyCode.F3,
+        scanVendings = Enum.KeyCode.F4,
+        emptyAll = Enum.KeyCode.F5
+    },
+    DEFAULT_SETTINGS = {
+        theme = "Amethyst",
+        radius = 100,
+        useRadius = false,
+        processMode = true
+    }
+}
 
+-- Rayfield UI Library
 local RayfieldSource = game:HttpGet('https://sirius.menu/rayfield')
 local RayfieldLoader = loadstring(RayfieldSource)
 local Rayfield = RayfieldLoader()
@@ -141,6 +155,7 @@ if not Rayfield then
     return
 end
 
+-- Create main window
 local Window = Rayfield:CreateWindow({
     Name = "Priz's Islands Hub",
     LoadingTitle = "Priz's Islands Hub", 
@@ -152,11 +167,13 @@ local Window = Rayfield:CreateWindow({
     KeySystem = false
 })
 
--- ============================================
--- SHARED STATE
--- ============================================
-
+-- Shared state between modules
 local state = {
+    -- Network
+    networkReady = Network.isReady(),
+    checkNetwork = Network.checkNetwork,
+    
+    -- Vending management
     selectedVending = nil,
     selectedItemName = nil,
     selectedFavorites = {},
@@ -171,6 +188,8 @@ local state = {
     favoriteVendings = {},
     itemNameMap = {},
     itemOptions = {},
+    
+    -- Statistics
     statistics = {
         coinsWithdrawn = 0,
         coinsDeposited = 0,
@@ -181,13 +200,20 @@ local state = {
         bankWithdrawals = 0
     },
     transactionHistory = {},
-    hotkeys = {
-        withdrawAll = Enum.KeyCode.F1,
-        depositAll = Enum.KeyCode.F2,
-        selectRandom = Enum.KeyCode.F3,
-        scanVendings = Enum.KeyCode.F4,
-        emptyAll = Enum.KeyCode.F5
-    },
+    
+    -- Hotkeys
+    hotkeys = Constants.DEFAULT_HOTKEYS,
+    userSettings = Constants.DEFAULT_SETTINGS,
+    
+    -- Functions to be implemented
+    findVendings = function() return {} end,
+    getVendingInfo = function() return nil, 0, 0 end,
+    addSelectionMarker = function() end,
+    removeSelectionMarker = function() end,
+    createRadiusRing = function() end,
+    removeRadiusRing = function() end,
+    saveFavorites = function() end,
+    loadFavorites = function() end,
 }
 
 -- ============================================
@@ -195,6 +221,34 @@ local state = {
 -- ============================================
 
 function state.findVendings()
+    if state.currentGroup ~= "Default" and state.currentGroup ~= "None" and state.vendingGroups[state.currentGroup] then
+        local groupVendings, allVendings = {}, {}
+        local islands = WS:FindFirstChild("Islands")
+        if islands then
+            for _, island in pairs(islands:GetChildren()) do
+                local blocks = island:FindFirstChild("Blocks")
+                if blocks then
+                    for _, obj in pairs(blocks:GetChildren()) do
+                        if obj.Name:find("vending") or obj.Name:find("Vending") then
+                            table.insert(allVendings, obj)
+                        end
+                    end
+                end
+            end
+        end
+        local group = state.vendingGroups[state.currentGroup]
+        for _, vendingData in ipairs(group) do
+            local savedPos = Vector3.new(vendingData.x, vendingData.y, vendingData.z)
+            for _, vending in ipairs(allVendings) do
+                if (vending.Position - savedPos).Magnitude < 1 then
+                    table.insert(groupVendings, vending)
+                    break
+                end
+            end
+        end
+        return groupVendings
+    end
+    
     local vendings = {}
     local islands = WS:FindFirstChild("Islands")
     if islands then
@@ -250,6 +304,13 @@ local function clearAllMarkers(vending)
         for _, child in pairs(vending:GetChildren()) do
             if child.Name == "SelectionMarker" then
                 child:Destroy()
+            end
+        end
+    end)
+    pcall(function()
+        for _, obj in pairs(WS:GetChildren()) do
+            if obj.Name == "SelectionMarker" and obj.Adornee == vending then
+                obj:Destroy()
             end
         end
     end)
@@ -323,281 +384,176 @@ function state.loadFavorites()
     end
 end
 
--- ============================================
--- HOME TAB
--- ============================================
-
-local HomeTab = Window:CreateTab("Home")
-
-HomeTab:CreateSection("About")
-HomeTab:CreateParagraph({
-    Title = "Welcome to Priz's Islands Hub",
-    Content = "Developed by: PrizLovesRice Aka Privy\nVersion: 1.0\nLast Updated: February 1, 2026"
-})
-
-HomeTab:CreateSection("Scanner & Stats")
-local Output = HomeTab:CreateParagraph({Title = "Output", Content = "Select an action below..."})
-local selectedMode = "Coin Scanner"
-
-HomeTab:CreateDropdown({
-    Name = "Select Mode",
-    Options = {"Coin Scanner", "Items Scanner", "Vending Mode Scanner", "Show Statistics"},
-    CurrentOption = {"Coin Scanner"},
-    MultipleOptions = false,
-    Callback = function(option)
-        selectedMode = option[1]
-    end
-})
-
-HomeTab:CreateButton({Name = "Apply", Callback = function()
-    if selectedMode == "Coin Scanner" then
-        local vendings = state.findVendings()
-        local totalCoins, vendingCount = 0, 0
-        for _, vending in ipairs(vendings) do
-            pcall(function()
-                if vending:FindFirstChild("CoinBalance") then
-                    totalCoins = totalCoins + vending.CoinBalance.Value
-                    vendingCount = vendingCount + 1
-                end
-            end)
-        end
-        local resultText = string.format("Total Vendings: %d\nVendings with Coins: %d\nTotal Coins: %s", #vendings, vendingCount, Util.formatNumber(totalCoins))
-        pcall(function() Output:Set({Title = "Coin Scanner", Content = resultText}) end)
-        Util.updateNotification("Scan Complete", Util.formatNumber(totalCoins) .. " Coins Found", 2)
-    elseif selectedMode == "Show Statistics" then
-        local statsText = string.format("Coins Withdrawn: %s\nCoins Deposited: %s\nItems Deposited: %d\nItems Withdrawn: %d",
-            Util.formatNumber(state.statistics.coinsWithdrawn),
-            Util.formatNumber(state.statistics.coinsDeposited),
-            state.statistics.itemsDeposited,
-            state.statistics.itemsWithdrawn)
-        pcall(function() Output:Set({Title = "Session Statistics", Content = statsText}) end)
-        Util.updateNotification("Statistics", "Displayed!", 2)
-    end
-end})
-
--- ============================================
--- VENDINGS MANAGER TAB
--- ============================================
-
-local VendingsManager = Window:CreateTab("Vendings Manager")
-
-VendingsManager:CreateSection("Vending Selection")
-VendingsManager:CreateButton({
-    Name = "Clear All Selections",
-    Callback = function()
-        for _, vending in ipairs(state.selectedFavorites) do
-            state.removeSelectionMarker(vending)
-        end
-        state.selectedFavorites = {}
-        Util.updateNotification("Selection", "Cleared all selections", 2)
-    end
-})
-
-VendingsManager:CreateSection("Bank Operations")
-local bankAmount = 1000000
-
-VendingsManager:CreateInput({
-    Name = "Bank Amount",
-    PlaceholderText = "Enter an amount",
-    RemoveTextAfterFocusLost = false,
-    Callback = function(text)
-        local num = Util.parseAmount(text)
-        if num then
-            bankAmount = num
-            Util.updateNotification("Amount", "Set to " .. Util.formatNumber(num), 2)
-        end
-    end
-})
-
-VendingsManager:CreateButton({Name = "Deposit to Bank", Callback = function()
-    Util.updateNotification("Bank", "Deposited " .. Util.formatNumber(bankAmount), 3)
-end})
-
-VendingsManager:CreateButton({Name = "Withdraw from Bank", Callback = function()
-    Util.updateNotification("Bank", "Withdrew " .. Util.formatNumber(bankAmount), 3)
-end})
-
--- ============================================
--- SETTINGS TAB
--- ============================================
-
-local SettingsTab = Window:CreateTab("Settings")
-
-SettingsTab:CreateSection("Performance & Controls")
-
-SettingsTab:CreateToggle({
-    Name = "Use Radius Limit",
-    CurrentValue = false,
-    Callback = function(value)
-        state.useRadiusLimit = value
-        if value then
-            Util.updateNotification("Radius Limit", "Enabled - " .. state.vendingRadius .. " studs", 2)
-        else
-            Util.updateNotification("Radius Limit", "Disabled", 2)
-        end
-    end
-})
-
-SettingsTab:CreateSlider({
-    Name = "Radius Distance",
-    Range = {2, 100},
-    Increment = 1,
-    CurrentValue = 100,
-    Callback = function(value) 
-        state.vendingRadius = value
-    end
-})
-
-local flying, flySpeed = false, 50
-local bodyVelocity, bodyGyro, flyConnection = nil, nil, nil
-
-local function startFly()
-    local char = LP.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-    local hrp = char.HumanoidRootPart
+function state.createRadiusRing()
+    if state.radiusRingPart then state.radiusRingPart:Destroy() state.radiusRingPart = nil end
+    if state.radiusConnection then state.radiusConnection:Disconnect() state.radiusConnection = nil end
+    if not LP.Character or not LP.Character:FindFirstChild("HumanoidRootPart") then return end
     
-    bodyVelocity = Instance.new("BodyVelocity")
-    bodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-    bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-    bodyVelocity.Parent = hrp
+    local adjustedRadius = state.vendingRadius * 0.8
+    local folder = Instance.new("Folder")
+    folder.Name = "RadiusRing"
+    folder.Parent = WS
+    state.radiusRingPart = folder
     
-    bodyGyro = Instance.new("BodyGyro")
-    bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-    bodyGyro.P = 9e4
-    bodyGyro.Parent = hrp
+    local parts = {}
+    for i = 1, 60 do
+        local angle = (i / 60) * math.pi * 2
+        local nextAngle = ((i + 1) / 60) * math.pi * 2
+        local x1, z1 = math.cos(angle) * adjustedRadius, math.sin(angle) * adjustedRadius
+        local x2, z2 = math.cos(nextAngle) * adjustedRadius, math.sin(nextAngle) * adjustedRadius
+        local pos1, pos2 = Vector3.new(x1, 0, z1), Vector3.new(x2, 0, z2)
+        local midpoint = (pos1 + pos2) / 2
+        local length = (pos2 - pos1).Magnitude * 1.05
+        local lookVector = (pos2 - pos1).Unit
+        
+        local part = Instance.new("Part")
+        part.Size = Vector3.new(0.15, 0.15, length)
+        part.Anchored = true
+        part.CanCollide = false
+        part.Material = Enum.Material.Neon
+        part.Color = Color3.fromRGB(138, 43, 226)
+        part.Transparency = 0.3
+        part.CFrame = CFrame.fromMatrix(midpoint, Vector3.new(0, 1, 0):Cross(lookVector), lookVector:Cross(Vector3.new(0, 1, 0):Cross(lookVector)), -lookVector)
+        part.Parent = folder
+        
+        table.insert(parts, {part = part, offset = midpoint})
+    end
     
-    if flyConnection then flyConnection:Disconnect() end
-    flyConnection = RunService.Heartbeat:Connect(function()
-        if not flying or not bodyVelocity or not bodyGyro then 
-            if flyConnection then flyConnection:Disconnect() flyConnection = nil end
-            return 
+    state.radiusConnection = game:GetService("RunService").Heartbeat:Connect(function()
+        if not state.radiusRingPart or not LP.Character or not LP.Character:FindFirstChild("HumanoidRootPart") then return end
+        
+        local currentPos = LP.Character.HumanoidRootPart.Position
+        for _, data in ipairs(parts) do
+            if data.part.Parent then
+                data.part.Position = currentPos + data.offset
+            end
         end
-        local cam = WS.CurrentCamera
-        local moveDir = Vector3.new()
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
-        if bodyVelocity then bodyVelocity.Velocity = moveDir * flySpeed end
-        if bodyGyro then bodyGyro.CFrame = cam.CFrame end
+        
+        task.wait(0.1)
     end)
 end
 
-local function stopFly()
-    flying = false
-    if bodyVelocity then bodyVelocity:Destroy() bodyVelocity = nil end
-    if bodyGyro then bodyGyro:Destroy() bodyGyro = nil end
-    if flyConnection then flyConnection:Disconnect() flyConnection = nil end
+function state.removeRadiusRing()
+    if state.radiusConnection then state.radiusConnection:Disconnect() state.radiusConnection = nil end
+    if state.radiusRingPart then state.radiusRingPart:Destroy() state.radiusRingPart = nil end
 end
 
-SettingsTab:CreateToggle({
-    Name = "Fly",
-    CurrentValue = false,
-    Callback = function(value)
-        flying = value
-        if value then
-            startFly()
-            Util.updateNotification("Fly", "Enabled - WASD to move, Space/Shift up/down", 3)
-        else
-            stopFly()
-            Util.updateNotification("Fly", "Disabled", 2)
+-- Load groups
+if isfile and readfile and isfile("VendingManager_Groups.json") then
+    local success, groupsData = pcall(function() return HttpService:JSONDecode(readfile("VendingManager_Groups.json")) end)
+    if success and groupsData then
+        for groupName, vendingList in pairs(groupsData) do
+            state.vendingGroups[groupName] = vendingList
         end
     end
-})
-
-SettingsTab:CreateSlider({
-    Name = "Fly Speed",
-    Range = {10, 200},
-    Increment = 10,
-    CurrentValue = 50,
-    Callback = function(value)
-        flySpeed = value
-    end
-})
+end
 
 -- ============================================
--- ALT+CLICK SELECTION
+-- ALT+CLICK VENDING SELECTION
 -- ============================================
 
 local Mouse = LP:GetMouse()
-local CLICK_LOCK = false
 
 Mouse.Button1Down:Connect(function()
-    if CLICK_LOCK then return end
-    CLICK_LOCK = true
+    if not UserInputService:IsKeyDown(Enum.KeyCode.LeftAlt) and not UserInputService:IsKeyDown(Enum.KeyCode.RightAlt) then 
+        return 
+    end
     
-    task.spawn(function()
-        if not UserInputService:IsKeyDown(Enum.KeyCode.LeftAlt) and not UserInputService:IsKeyDown(Enum.KeyCode.RightAlt) then 
-            CLICK_LOCK = false
-            return 
+    local target = Mouse.Target
+    if not target then return end
+    
+    local vending = nil
+    local obj = target
+    
+    for i = 1, 15 do
+        if not obj then break end
+        if obj.Name:lower():find("vending") then
+            vending = obj
+        end
+        obj = obj.Parent
+    end
+    
+    if not vending then return end
+    
+    while vending.Parent and vending.Parent.Name:lower():find("vending") do
+        vending = vending.Parent
+    end
+    
+    local isSelected = false
+    local selectedIndex = nil
+    
+    for i, v in ipairs(state.selectedFavorites) do
+        if v == vending then
+            isSelected = true
+            selectedIndex = i
+            break
+        end
+    end
+    
+    if isSelected then
+        table.remove(state.selectedFavorites, selectedIndex)
+        state.removeSelectionMarker(vending)
+        Util.updateNotification("Deselected", vending.Name, 1)
+    else
+        if #state.selectedFavorites >= Constants.MAX_SELECTIONS then
+            Util.updateNotification("Limit Reached!", "Maximum " .. Constants.MAX_SELECTIONS .. " selections", 4)
+            return
         end
         
-        local target = Mouse.Target
-        if not target then 
-            CLICK_LOCK = false
-            return 
-        end
-        
-        local vending = nil
-        local obj = target
-        
-        for i = 1, 15 do
-            if not obj then break end
-            if obj.Name:lower():find("vending") then
-                vending = obj
-            end
-            obj = obj.Parent
-        end
-        
-        if not vending then 
-            CLICK_LOCK = false
-            return 
-        end
-        
-        while vending.Parent and vending.Parent.Name:lower():find("vending") do
-            vending = vending.Parent
-        end
-        
-        local isSelected = false
-        local selectedIndex = nil
-        
-        for i, v in ipairs(state.selectedFavorites) do
-            if v == vending then
-                isSelected = true
-                selectedIndex = i
-                break
-            end
-        end
-        
-        if isSelected then
-            table.remove(state.selectedFavorites, selectedIndex)
-            state.removeSelectionMarker(vending)
-            Util.updateNotification("Deselected", vending.Name, 1)
-        else
-            if #state.selectedFavorites >= 100 then
-                Util.updateNotification("Limit Reached!", "Maximum 100 selections", 4)
-                CLICK_LOCK = false
-                return
-            end
-            
-            table.insert(state.selectedFavorites, vending)
-            state.addSelectionMarker(vending)
-            Util.updateNotification("Selected", vending.Name, 1)
-        end
-        
-        task.wait(0.5)
-        CLICK_LOCK = false
-    end)
+        table.insert(state.selectedFavorites, vending)
+        state.addSelectionMarker(vending)
+        Util.updateNotification("Selected", vending.Name .. " (" .. #state.selectedFavorites .. "/" .. Constants.MAX_SELECTIONS .. ")", 1)
+    end
 end)
 
 -- ============================================
--- STARTUP
+-- LOAD ALL MODULES
+-- ============================================
+
+-- Pass utilities and constants to modules
+state.Util = Util
+state.Constants = Constants
+
+local Home = loadstring(game:HttpGet('https://raw.githubusercontent.com/PrizLovesRice1/Roblox-Islands/main/modules/Home.lua'))()
+local VendingsManager = loadstring(game:HttpGet('https://raw.githubusercontent.com/PrizLovesRice1/Roblox-Islands/main/modules/VendingsManager.lua'))()
+local BlockPrinter = loadstring(game:HttpGet('https://raw.githubusercontent.com/PrizLovesRice1/Roblox-Islands/main/modules/BlockPrinter.lua'))()
+local Automation = loadstring(game:HttpGet('https://raw.githubusercontent.com/PrizLovesRice1/Roblox-Islands/main/modules/Automation.lua'))()
+local Farming = loadstring(game:HttpGet('https://raw.githubusercontent.com/PrizLovesRice1/Roblox-Islands/main/modules/Farming.lua'))()
+local Settings = loadstring(game:HttpGet('https://raw.githubusercontent.com/PrizLovesRice1/Roblox-Islands/main/modules/Settings.lua'))()
+local Presets = loadstring(game:HttpGet('https://raw.githubusercontent.com/PrizLovesRice1/Roblox-Islands/main/modules/Presets.lua'))()
+
+local modules = {Home, VendingsManager, BlockPrinter, Automation, Farming, Settings, Presets}
+
+for _, moduleFunc in ipairs(modules) do
+    task.spawn(function()
+        pcall(function()
+            moduleFunc(Window, state)
+        end)
+    end)
+end
+
+-- ============================================
+-- STARTUP MESSAGE
 -- ============================================
 
 task.spawn(function()
     task.wait(1)
+    local islandCode = "Unknown"
+    pcall(function()
+        if LP:FindFirstChild("JoinCode") then
+            islandCode = LP.JoinCode.Value
+        end
+    end)
+    
+    Rayfield:Notify({
+        Title = "Welcome " .. LP.Name .. "!",
+        Content = "Username: " .. LP.Name .. "\nDisplay: " .. LP.DisplayName .. "\nUser ID: " .. LP.UserId .. "\nAge: " .. LP.AccountAge .. " days\nIsland: " .. islandCode,
+        Duration = 8,
+        Image = 4483362458,
+    })
+    
     Util.updateNotification("Priz's Islands Hub", "Script Loaded Successfully!", 5)
-    print("✅ Priz's Islands Hub loaded!")
 end)
+
+print("✅ Priz's Islands Hub loaded successfully!")
+print("Discord: discord.gg/NuUzrrNaJz")
