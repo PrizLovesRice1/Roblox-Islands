@@ -2150,142 +2150,738 @@ end})
 
 
 
+-- ============================================
+-- AUTO BUILD TAB
+-- ============================================
 local BlockPrinterTab = Window:CreateTab("Block Printer")
 
-BlockPrinterTab:CreateParagraph({Title = "WARNING - BAN RISK", Content = "Using Block Printer may result in account bans!\n\nThis feature places blocks automatically which can be detected by anti-cheat systems.\n\nUSE AT YOUR OWN RISK\n\nRecommended: Only use on alt accounts"})
+local PathfindingService = game:GetService("PathfindingService")
 
-BlockPrinterTab:CreateSection("Block Placement")
-
-BlockPrinterTab:CreateParagraph({Title = "How to Use", Content = "1. Select block type\n2. Enable placement\n3. Click to place blocks\n\nWorks like Roblox Studio!"})
-
-BlockPrinterTab:CreateSection("BTools Controls")
-
-local selectedBlock = "grassBlock"
-local placementActive = false
-
--- Get block types (safe, non-blocking)
-local function getBlockTypes()
- local blocks = {}
- pcall(function()
-  local blocksFolder = RS:FindFirstChild("blocks")
-  if blocksFolder then
-   for _, block in pairs(blocksFolder:GetChildren()) do
-    table.insert(blocks, block.Name)
-   end
-  end
- end)
- if #blocks == 0 then
-  blocks = {"grassBlock", "stoneBlock", "woodBlock", "sandBlock", "dirtBlock", "oakWoodBlock", "birchWoodBlock", "cobblestoneBlock", "graniteBlock"}
- end
- table.sort(blocks)
- return blocks
+if not isfolder("autoBuilder") then
+    makefolder("autoBuilder")
 end
 
-local blockTypes = getBlockTypes()
+local placeDelay = 0.01
+local retryDelay = 0.04
+local verifyWaitTime = 1.5
+local rounding = 0.1
+local maxTriesPerBlock = 3
 
--- Refresh block list after a moment
-task.spawn(function()
- task.wait(2)
- pcall(function()
-  blockTypes = getBlockTypes()
- end)
+local selectedFile = nil
+local isBuilding = false
+
+local moveToBuildPosition = true
+local movementThreshold = 60
+local walkOffset = 15
+local moveTimeout = 4
+local waypointTimeout = 2.2
+
+local floatPartName = "BuilderFloatPlatform"
+local floating = false
+local floatOffset = -3.1
+local floatDownAmount = 0.5
+local floatUpAmount = 1.5
+local floatDownKey = Enum.KeyCode.Z
+local floatUpKey = Enum.KeyCode.X
+local hbConn
+local keyDownConn
+local keyUpConn
+local deathConn
+
+local VirtualInputManager
+pcall(function()
+    VirtualInputManager = game:GetService("VirtualInputManager")
 end)
 
-BlockPrinterTab:CreateDropdown({Name = "Select Block Type", Options = blockTypes, CurrentOption = {blockTypes[1]}, MultipleOptions = false, Callback = function(option)
- selectedBlock = option[1]
- if placementActive then
-  updateNotification("BTools", "Now placing: " .. selectedBlock, 2)
- end
-end})
+local function getRoot(char)
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
 
-local placementConnection = nil
+local function getCharacterParts()
+    local char = LP.Character or LP.CharacterAdded:Wait()
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    return char, humanoid, hrp
+end
 
-BlockPrinterTab:CreateToggle({Name = "Enable Click-to-Place", CurrentValue = false, Callback = function(value)
- placementActive = value
- 
- if value then
-  updateNotification("BTools", "Click anywhere to place " .. selectedBlock, 3)
-  
-  -- Create mouse click handler
-  local mouse = LP:GetMouse()
-  
-  if placementConnection then
-   placementConnection:Disconnect()
-  end
-  
-  placementConnection = mouse.Button1Down:Connect(function()
-   if not placementActive then
-    if placementConnection then
-     placementConnection:Disconnect()
-     placementConnection = nil
+local function pressShift()
+    if VirtualInputManager then
+        pcall(function()
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.LeftShift, false, game)
+        end)
     end
-    return
-   end
-   
-   pcall(function()
-    local target = mouse.Target
-    local hitPos = mouse.Hit.Position
-    
-    -- Place block 3 studs above hit position
-    local placePos = hitPos + Vector3.new(0, 3, 0)
-    
-    local args = {
-     ["upperBlock"] = false,
-     ["cframe"] = CFrame.new(placePos),
-     ["blockType"] = selectedBlock,
-     ["player_tracking_category"] = "join_from_web"
-    }
-    
-    Net:WaitForChild("CLIENT_BLOCK_PLACE_REQUEST"):InvokeServer(args)
-   end)
-  end)
- else
-  updateNotification("BTools", "Placement disabled", 2)
-  if placementConnection then
-   placementConnection:Disconnect()
-   placementConnection = nil
-  end
- end
-end})
+end
 
+local function releaseShift()
+    if VirtualInputManager then
+        pcall(function()
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.LeftShift, false, game)
+        end)
+    end
+end
 
+local function cleanupFloat()
+    if hbConn then
+        hbConn:Disconnect()
+        hbConn = nil
+    end
+    if keyDownConn then
+        keyDownConn:Disconnect()
+        keyDownConn = nil
+    end
+    if keyUpConn then
+        keyUpConn:Disconnect()
+        keyUpConn = nil
+    end
+    if deathConn then
+        deathConn:Disconnect()
+        deathConn = nil
+    end
 
-BlockPrinterTab:CreateSection("Quick Actions")
+    local char = LP.Character
+    if char then
+        local old = char:FindFirstChild(floatPartName)
+        if old then
+            old:Destroy()
+        end
+    end
 
-BlockPrinterTab:CreateButton({Name = "Place Block at Feet", Callback = function()
- pcall(function()
-  local pos = LP.Character.HumanoidRootPart.Position
-  
-  local args = {
-   ["upperBlock"] = false,
-   ["cframe"] = CFrame.new(pos + Vector3.new(0, 3, 0)),
-   ["blockType"] = selectedBlock,
-   ["player_tracking_category"] = "join_from_web"
-  }
-  
-  Net:WaitForChild("CLIENT_BLOCK_PLACE_REQUEST"):InvokeServer(args)
-  updateNotification("Placed", selectedBlock, 2)
- end)
-end})
+    floating = false
+    floatOffset = -3.1
+end
 
-BlockPrinterTab:CreateButton({Name = "Delete Block (Looking At)", Callback = function()
- pcall(function()
-  local mouse = LP:GetMouse()
-  local target = mouse.Target
-  
-  if target and target.Parent and target.Parent.Name == "Blocks" then
-   local args = {
-    ["block"] = target,
-    ["player_tracking_category"] = "join_from_web"
-   }
-   
-   Net:WaitForChild("CLIENT_BLOCK_BREAK_REQUEST"):InvokeServer(args)
-   updateNotification("Deleted", target.Name, 2)
-  else
-   updateNotification("Error", "Not looking at a block!", 3)
-  end
- end)
-end})
+local function enableFloat()
+    local char = LP.Character or LP.CharacterAdded:Wait()
+    local root = getRoot(char)
+    if not root then
+        return
+    end
+
+    if char:FindFirstChild(floatPartName) then
+        return
+    end
+
+    floating = true
+
+    local floatPart = Instance.new("Part")
+    floatPart.Name = floatPartName
+    floatPart.Transparency = 1
+    floatPart.Size = Vector3.new(2, 0.2, 1.5)
+    floatPart.Anchored = true
+    floatPart.CanCollide = true
+    floatPart.Parent = char
+    floatPart.CFrame = root.CFrame * CFrame.new(0, floatOffset, 0)
+
+    keyDownConn = UserInputService.InputBegan:Connect(function(input, gp)
+        if gp then
+            return
+        end
+
+        if input.KeyCode == floatDownKey then
+            floatOffset -= floatDownAmount
+        elseif input.KeyCode == floatUpKey then
+            floatOffset += floatUpAmount
+        end
+    end)
+
+    keyUpConn = UserInputService.InputEnded:Connect(function(input, gp)
+        if gp then
+            return
+        end
+
+        if input.KeyCode == floatDownKey then
+            floatOffset += floatDownAmount
+        elseif input.KeyCode == floatUpKey then
+            floatOffset -= floatUpAmount
+        end
+    end)
+
+    hbConn = game:GetService("RunService").Heartbeat:Connect(function()
+        local currentChar = LP.Character
+        local currentRoot = getRoot(currentChar)
+
+        if not floating or not currentChar or not currentRoot or not floatPart.Parent then
+            cleanupFloat()
+            return
+        end
+
+        floatPart.CFrame = currentRoot.CFrame * CFrame.new(0, floatOffset, 0)
+    end)
+
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        deathConn = humanoid.Died:Connect(function()
+            cleanupFloat()
+        end)
+    end
+end
+
+local function toggleFloat(v)
+    if v == nil then
+        if floating then
+            cleanupFloat()
+        else
+            enableFloat()
+        end
+    else
+        if v then
+            if not floating then
+                enableFloat()
+            end
+        else
+            cleanupFloat()
+        end
+    end
+end
+
+local function roundToStep(n, step)
+    return math.floor((n / step) + 0.5) * step
+end
+
+local function vectorKey(v)
+    return table.concat({
+        tostring(roundToStep(v.X, rounding)),
+        tostring(roundToStep(v.Y, rounding)),
+        tostring(roundToStep(v.Z, rounding))
+    }, "|")
+end
+
+local function makeBlockKey(blockType, cf)
+    return tostring(blockType) .. "@" .. vectorKey(cf.Position)
+end
+
+local function arrayToCFrame(a)
+    local pos = Vector3.new(a[1], a[2], a[3])
+    local right = Vector3.new(a[4], a[5], a[6])
+    local up = Vector3.new(a[7], a[8], a[9])
+    return CFrame.fromMatrix(pos, right, up)
+end
+
+local function getFiles()
+    local files = {}
+
+    for _, file in ipairs(listfiles("autoBuilder")) do
+        local lower = string.lower(file)
+        if lower:sub(-4) == ".txt" or lower:sub(-5) == ".json" then
+            table.insert(files, file:match("[^/\\]+$"))
+        end
+    end
+
+    table.sort(files)
+    return files
+end
+
+local function getNearestIsland()
+    local islandsFolder = WS:FindFirstChild("Islands")
+    if not islandsFolder then
+        return nil
+    end
+
+    local _, _, hrp = getCharacterParts()
+    if not hrp then
+        return nil
+    end
+
+    local closestIsland = nil
+    local closestDistance = math.huge
+
+    for _, child in ipairs(islandsFolder:GetChildren()) do
+        if child:IsA("Model") then
+            local pivot = child:GetPivot()
+            local dist = (pivot.Position - hrp.Position).Magnitude
+            if dist < closestDistance then
+                closestDistance = dist
+                closestIsland = child
+            end
+        end
+    end
+
+    return closestIsland
+end
+
+local function getBlocksFolder()
+    local island = getNearestIsland()
+    if not island then
+        return nil
+    end
+
+    return island:FindFirstChild("Blocks")
+end
+
+local function buildExistingBlockMap()
+    local blocksFolder = getBlocksFolder()
+    if not blocksFolder then
+        return {}
+    end
+
+    local existingMap = {}
+    local blocks = blocksFolder:GetChildren()
+
+    for i = 1, #blocks do
+        local block = blocks[i]
+        if block:IsA("BasePart") then
+            if block.Name ~= "portalToSpawn" and block.Name ~= "bedrock" then
+                local key = makeBlockKey(block.Name, block.CFrame)
+                existingMap[key] = true
+            end
+        end
+
+        if i % 3000 == 0 then
+            task.wait()
+        end
+    end
+
+    return existingMap
+end
+
+local function getPlacedAndMissingBlocks(targetBlocks)
+    local existingMap = buildExistingBlockMap()
+    local placed = {}
+    local missing = {}
+
+    for i, block in ipairs(targetBlocks) do
+        local cf = arrayToCFrame(block.cframe)
+        local key = makeBlockKey(block.blockType, cf)
+
+        if existingMap[key] then
+            table.insert(placed, block)
+        else
+            table.insert(missing, block)
+        end
+
+        if i % 3000 == 0 then
+            task.wait()
+        end
+    end
+
+    return placed, missing
+end
+
+local function getMissingBlocks(targetBlocks)
+    local _, missing = getPlacedAndMissingBlocks(targetBlocks)
+    return missing
+end
+
+local net = RS
+    :WaitForChild("rbxts_include")
+    :WaitForChild("node_modules")
+    :WaitForChild("@rbxts")
+    :WaitForChild("net")
+    :WaitForChild("out")
+    :WaitForChild("_NetManaged")
+    :WaitForChild("CLIENT_BLOCK_PLACE_REQUEST")
+
+local function placeRawBlock(blockType, cf, upperBlock)
+    local args = {{
+        uwhiHAMdjExWka = "\a\240\159\164\163\240\159\164\161\a\n\a\n\a\nffEgdldU",
+        cframe = cf,
+        blockType = blockType,
+        upperBlock = upperBlock == true
+    }}
+
+    local ok, err = pcall(function()
+        net:InvokeServer(unpack(args))
+    end)
+
+    if not ok then
+        warn("Place failed:", blockType, err)
+    end
+
+    return ok
+end
+
+local function blockExists(block)
+    local blocksFolder = getBlocksFolder()
+    if not blocksFolder then
+        return false
+    end
+
+    local cf = arrayToCFrame(block.cframe)
+    local key = makeBlockKey(block.blockType, cf)
+
+    for _, part in ipairs(blocksFolder:GetChildren()) do
+        if part:IsA("BasePart") and part.Name == block.blockType then
+            local existingKey = makeBlockKey(part.Name, part.CFrame)
+            if existingKey == key then
+                return true
+            end
+        end
+    end
+
+    return false
+end
+
+local function getAdaptiveWalkTarget(targetPos, hrpPos)
+    local dir = hrpPos - targetPos
+    if dir.Magnitude < 0.01 then
+        dir = Vector3.new(0, 0, -1)
+    else
+        dir = dir.Unit
+    end
+
+    local yDelta = targetPos.Y - hrpPos.Y
+    local verticalOffset = math.clamp(yDelta + 2, -8, 18)
+
+    return targetPos + (dir * walkOffset) + Vector3.new(0, verticalOffset, 0)
+end
+
+local function moveToPoint(point)
+    local _, humanoid = getCharacterParts()
+    if not humanoid then
+        return false
+    end
+
+    humanoid:MoveTo(point)
+
+    local reached = false
+    local conn
+    conn = humanoid.MoveToFinished:Connect(function(ok)
+        reached = ok or true
+    end)
+
+    local start = tick()
+    while not reached and (tick() - start) < waypointTimeout do
+        task.wait(0.05)
+        if not isBuilding then
+            break
+        end
+    end
+
+    if conn then
+        conn:Disconnect()
+    end
+
+    return reached
+end
+
+local function pathfindWalkTo(targetPoint)
+    local _, humanoid, hrp = getCharacterParts()
+    if not humanoid or not hrp then
+        return false
+    end
+
+    local path = PathfindingService:CreatePath({
+        AgentRadius = 2,
+        AgentHeight = 5,
+        AgentCanJump = true,
+        AgentCanClimb = true,
+        WaypointSpacing = 4
+    })
+
+    local success = pcall(function()
+        path:ComputeAsync(hrp.Position, targetPoint)
+    end)
+
+    if not success or path.Status ~= Enum.PathStatus.Success then
+        pressShift()
+        local ok = moveToPoint(targetPoint)
+        releaseShift()
+        return ok
+    end
+
+    local waypoints = path:GetWaypoints()
+    if #waypoints == 0 then
+        pressShift()
+        local ok = moveToPoint(targetPoint)
+        releaseShift()
+        return ok
+    end
+
+    pressShift()
+
+    for _, waypoint in ipairs(waypoints) do
+        if not isBuilding then
+            break
+        end
+
+        if waypoint.Action == Enum.PathWaypointAction.Jump then
+            humanoid.Jump = true
+        end
+
+        moveToPoint(waypoint.Position)
+    end
+
+    releaseShift()
+    return true
+end
+
+local function moveNearBlock(block)
+    if not moveToBuildPosition then
+        return
+    end
+
+    local _, _, hrp = getCharacterParts()
+    if not hrp then
+        return
+    end
+
+    local targetCF = arrayToCFrame(block.cframe)
+    local targetPos = targetCF.Position
+    local distance = (hrp.Position - targetPos).Magnitude
+
+    if distance <= movementThreshold then
+        return
+    end
+
+    local walkTarget = getAdaptiveWalkTarget(targetPos, hrp.Position)
+    pathfindWalkTo(walkTarget)
+end
+
+local function placeBlock(block)
+    moveNearBlock(block)
+    return placeRawBlock(block.blockType, arrayToCFrame(block.cframe), block.upperBlock == true)
+end
+
+local function placeBlockList(blockList, delayTime)
+    local failed = {}
+
+    for i, block in ipairs(blockList) do
+        if not isBuilding then
+            break
+        end
+
+        local placed = false
+        local tries = 0
+
+        while not placed and tries < maxTriesPerBlock and isBuilding do
+            tries += 1
+            placeBlock(block)
+            task.wait(delayTime)
+            placed = blockExists(block)
+
+            if not placed then
+                task.wait(retryDelay)
+            end
+        end
+
+        if not placed then
+            table.insert(failed, block)
+        end
+
+        if i % 150 == 0 then
+            task.wait()
+        end
+    end
+
+    return failed
+end
+
+local function loadSelectedBuild()
+    if not selectedFile or selectedFile == "" then
+        updateNotification("No File Selected", "Please select a build file first", 3)
+        return nil
+    end
+
+    local path = "autoBuilder/" .. selectedFile
+
+    if not isfile(path) then
+        updateNotification("Error", "File not found: " .. tostring(selectedFile), 4)
+        return nil
+    end
+
+    local text = readfile(path)
+    local success, data = pcall(function()
+        return HttpService:JSONDecode(text)
+    end)
+
+    if not success or type(data) ~= "table" or type(data.blocks) ~= "table" then
+        updateNotification("Error", "Invalid build JSON", 4)
+        return nil
+    end
+
+    return data
+end
+
+local function runBuild(blocks, missingOnly)
+    if isBuilding then
+        updateNotification("Busy", "Builder is already running", 3)
+        return
+    end
+
+    isBuilding = true
+
+    task.spawn(function()
+        if missingOnly then
+            updateNotification("Scanning", "Checking placed and missing blocks...", 4)
+            local placed, missing = getPlacedAndMissingBlocks(blocks)
+
+            updateNotification("Scan Complete", "Placed: " .. #placed .. " | Missing: " .. #missing, 5)
+
+            if #missing == 0 then
+                isBuilding = false
+                updateNotification("Nothing Missing", "All blocks are already placed", 4)
+                return
+            end
+
+            local pass = 1
+            local currentMissing = missing
+
+            while isBuilding and #currentMissing > 0 do
+                updateNotification("Missing Block Pass", "Pass " .. pass .. ": placing " .. #currentMissing .. " blocks", 4)
+
+                local failed = placeBlockList(currentMissing, placeDelay)
+                task.wait(verifyWaitTime)
+
+                currentMissing = getMissingBlocks(blocks)
+                pass += 1
+
+                if #failed > 0 and #failed == #currentMissing and pass >= 4 then
+                    break
+                end
+            end
+
+            isBuilding = false
+
+            local finalMissing = getMissingBlocks(blocks)
+            if #finalMissing == 0 then
+                updateNotification("Done", "All missing blocks have been placed", 5)
+            else
+                updateNotification("Finished With Skips", "Still missing " .. #finalMissing .. " block(s)", 6)
+            end
+        else
+            updateNotification("Building Started", "Placing " .. #blocks .. " blocks", 4)
+
+            local failed = placeBlockList(blocks, placeDelay)
+            task.wait(verifyWaitTime)
+
+            local missing = getMissingBlocks(blocks)
+            local pass = 1
+
+            while isBuilding and #missing > 0 do
+                updateNotification("Retry Pass", "Pass " .. pass .. ": retrying " .. #missing .. " missing blocks", 4)
+
+                failed = placeBlockList(missing, retryDelay)
+                task.wait(verifyWaitTime)
+
+                local newMissing = getMissingBlocks(blocks)
+                if #newMissing == #missing and pass >= 4 then
+                    missing = newMissing
+                    break
+                end
+
+                missing = newMissing
+                pass += 1
+            end
+
+            isBuilding = false
+
+            if #missing == 0 then
+                updateNotification("Build Complete", "All blocks placed successfully", 5)
+            else
+                updateNotification("Finished With Skips", "Could not place " .. #missing .. " block(s)", 6)
+            end
+        end
+
+        releaseShift()
+    end)
+end
+
+local fileDropdown = BlockPrinterTab:CreateDropdown({
+    Name = "Select Build File",
+    Options = getFiles(),
+    CurrentOption = {},
+    MultipleOptions = false,
+    Flag = "FileDropdown",
+    Callback = function(option)
+        if typeof(option) == "table" then
+            selectedFile = option[1]
+        else
+            selectedFile = option
+        end
+    end
+})
+
+BlockPrinterTab:CreateButton({
+    Name = "Refresh Files",
+    Callback = function()
+        fileDropdown:Refresh(getFiles())
+    end
+})
+
+BlockPrinterTab:CreateToggle({
+    Name = "Move Near Block Before Placing",
+    CurrentValue = true,
+    Flag = "MoveNearBlock",
+    Callback = function(v)
+        moveToBuildPosition = v
+    end
+})
+
+BlockPrinterTab:CreateButton({
+    Name = "Build Selected File",
+    Callback = function()
+        local data = loadSelectedBuild()
+        if not data then
+            return
+        end
+
+        runBuild(data.blocks, false)
+    end
+})
+
+BlockPrinterTab:CreateButton({
+    Name = "Place Missing Blocks Only",
+    Callback = function()
+        local data = loadSelectedBuild()
+        if not data then
+            return
+        end
+
+        runBuild(data.blocks, true)
+    end
+})
+
+BlockPrinterTab:CreateButton({
+    Name = "Stop Build",
+    Callback = function()
+        isBuilding = false
+        releaseShift()
+        updateNotification("Stopped", "Build process stopped", 3)
+    end
+})
+
+BlockPrinterTab:CreateToggle({
+    Name = "Float Platform",
+    CurrentValue = false,
+    Flag = "FloatPlatformToggle",
+    Callback = function(v)
+        toggleFloat(v)
+    end
+})
+
+BlockPrinterTab:CreateSlider({
+    Name = "Down Move Amount",
+    Range = {0.1, 3},
+    Increment = 0.1,
+    CurrentValue = 0.5,
+    Flag = "FloatDownAmount",
+    Callback = function(v)
+        floatDownAmount = v
+    end
+})
+
+BlockPrinterTab:CreateSlider({
+    Name = "Up Move Amount",
+    Range = {0.1, 3},
+    Increment = 0.1,
+    CurrentValue = 1.5,
+    Flag = "FloatUpAmount",
+    Callback = function(v)
+        floatUpAmount = v
+    end
+})
+
+BlockPrinterTab:CreateParagraph({
+    Title = "Float Keybinds",
+    Content = "Down: Z | Up: X"
+})
+
+BlockPrinterTab:CreateButton({
+    Name = "Toggle Float Now",
+    Callback = function()
+        toggleFloat()
+    end
+})
 
 
 
