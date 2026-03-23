@@ -31,7 +31,7 @@ local RayfieldLoader = loadstring(RayfieldSource)
 if not RayfieldLoader then
     print("ERROR: Failed to load Rayfield source")
     print("Try restarting your game and executor")
-    return
+    error("Rayfield loader failed")
 end
 
 local Rayfield = RayfieldLoader()
@@ -39,7 +39,7 @@ local Rayfield = RayfieldLoader()
 if not Rayfield then
     print("ERROR: Rayfield loaded but returned nil")
     print("Try restarting your game and executor")
-    return
+    error("Rayfield initialization failed")
 end
 
 local Window = Rayfield:CreateWindow({
