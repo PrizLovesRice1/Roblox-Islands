@@ -2883,6 +2883,108 @@ BlockPrinterTab:CreateButton({
     end
 })
 
+BlockPrinterTab:CreateSection("Build Saver")
+
+BlockPrinterTab:CreateParagraph({
+    Title = "Save Island Blueprint",
+    Content = "Saves your island as a JSON file that can be used with Auto Build. Creates a .json file in the autoBuilder folder."
+})
+
+local function cfToArray(cf)
+    local pos = cf.Position
+    local r = cf.RightVector
+    local u = cf.UpVector
+    local l = cf.LookVector
+
+    return {
+        pos.X, pos.Y, pos.Z,
+        r.X, r.Y, r.Z,
+        u.X, u.Y, u.Z
+    }
+end
+
+local saveFileName = "island_blueprint"
+
+BlockPrinterTab:CreateInput({
+    Name = "Blueprint Name",
+    PlaceholderText = "island_blueprint",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(text)
+        if text and text ~= "" then
+            saveFileName = text:gsub("[^%w_-]", "")
+        end
+    end
+})
+
+BlockPrinterTab:CreateButton({
+    Name = "Save Island Blueprint",
+    Callback = function()
+        task.spawn(function()
+            pcall(function()
+                if not isfolder("autoBuilder") then
+                    makefolder("autoBuilder")
+                end
+
+                local islandsFolder = WS:FindFirstChild("Islands")
+                if not islandsFolder then
+                    updateNotification("Error", "Islands folder not found!", 3)
+                    return
+                end
+
+                local island = getNearestIsland()
+                if not island then
+                    updateNotification("Error", "No island found!", 3)
+                    return
+                end
+
+                local blocksFolder = island:FindFirstChild("Blocks")
+                if not blocksFolder then
+                    updateNotification("Error", "Blocks folder not found!", 3)
+                    return
+                end
+
+                local blocks = blocksFolder:GetChildren()
+                local blocksData = {}
+                local index = 1
+
+                updateNotification("Saving", "Processing " .. #blocks .. " blocks...", 5)
+
+                for i = 1, #blocks do
+                    local block = blocks[i]
+
+                    if block.Name ~= "portalToSpawn" and block.Name ~= "bedrock" and block.Name ~= "Collision" then
+                        if block:IsA("BasePart") then
+                            blocksData[index] = {
+                                cframe = cfToArray(block.CFrame),
+                                blockType = block.Name
+                            }
+                            index = index + 1
+                        end
+                    end
+
+                    if i % 5000 == 0 then
+                        task.wait()
+                    end
+                end
+
+                local finalFileName = saveFileName
+                if not finalFileName:endswith(".json") then
+                    finalFileName = finalFileName .. ".json"
+                end
+
+                local json = HttpService:JSONEncode({
+                    blocks = blocksData
+                })
+
+                local filePath = "autoBuilder/" .. finalFileName
+                writefile(filePath, json)
+
+                updateNotification("Success", "Saved " .. (index - 1) .. " blocks to " .. finalFileName, 5)
+            end)
+        end)
+    end
+})
+
 
 
 local AutomationTab = Window:CreateTab("Automation")
