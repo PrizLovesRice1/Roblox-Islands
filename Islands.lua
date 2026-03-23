@@ -148,12 +148,14 @@ local performanceMode = false
 local favoriteVendings, selectedFavorites, favoritesSelectionMode = {}, {}, false
 
 local function saveFavorites()
+ if not writefile then return end
  local favData = {}
  for _, vending in pairs(favoriteVendings) do table.insert(favData, {x = vending.Position.X, y = vending.Position.Y, z = vending.Position.Z, name = vending.Name}) end
  writefile("VendingManager_Favorites.json", HttpService:JSONEncode(favData))
 end
 
 local function loadFavorites()
+ if not isfile or not readfile then return end
  if isfile("VendingManager_Favorites.json") then
   local success, data = pcall(function() return HttpService:JSONDecode(readfile("VendingManager_Favorites.json")) end)
   if success and data then
@@ -2164,7 +2166,7 @@ local BlockPrinterTab = Window:CreateTab("Block Printer")
 
 local PathfindingService = game:GetService("PathfindingService")
 
-if not isfolder("autoBuilder") then
+if isfolder and makefolder and not isfolder("autoBuilder") then
     makefolder("autoBuilder")
 end
 
@@ -2674,6 +2676,11 @@ local function placeBlockList(blockList, delayTime)
 end
 
 local function loadSelectedBuild()
+    if not isfile or not readfile then
+        updateNotification("Error", "File system not available!", 3)
+        return nil
+    end
+    
     if not selectedFile or selectedFile == "" then
         updateNotification("No File Selected", "Please select a build file first", 3)
         return nil
@@ -2928,7 +2935,7 @@ BlockPrinterTab:CreateButton({
     Callback = function()
         task.spawn(function()
             pcall(function()
-                if not isfolder("autoBuilder") then
+                if isfolder and makefolder and not isfolder("autoBuilder") then
                     makefolder("autoBuilder")
                 end
 
@@ -2984,7 +2991,7 @@ BlockPrinterTab:CreateButton({
                 })
 
                 local filePath = "autoBuilder/" .. finalFileName
-                writefile(filePath, json)
+                if writefile then writefile(filePath, json) end
 
                 updateNotification("Success", "Saved " .. (index - 1) .. " blocks to " .. finalFileName, 5)
             end)
@@ -4367,7 +4374,7 @@ PresetsTab:CreateButton({Name = "Apply", Callback = function()
  elseif favGroupMode == "Hide Group ESP" then removeGroupESP() updateNotification("ESP", "Hidden", 2)
  elseif favGroupMode == "Use Group for Operations" then if selectedGroupName == "None" or not vendingGroups[selectedGroupName] then updateNotification("Error", "Select group!", 3) return end currentGroup = selectedGroupName updateNotification("Active", "Using: " .. selectedGroupName, 3)
  elseif favGroupMode == "Use All Vendings" then currentGroup = "Default" selectedGroupName = "None" updateNotification("Active", "Using ALL vendings", 2)
- elseif favGroupMode == "Delete Group" then local groupToDelete = groupNameInput ~= "" and groupNameInput or selectedGroupName if groupToDelete == "None" or not vendingGroups[groupToDelete] then updateNotification("Error", "Select/enter group!", 3) return end vendingGroups[groupToDelete] = nil updateNotification("Deleted", "Deleted " .. groupToDelete, 3) local groupsData = {} for groupName, vendingList in pairs(vendingGroups) do if groupName ~= "Default" then groupsData[groupName] = vendingList end end writefile("VendingManager_Groups.json", HttpService:JSONEncode(groupsData)) currentGroup = "Default"
+ elseif favGroupMode == "Delete Group" then local groupToDelete = groupNameInput ~= "" and groupNameInput or selectedGroupName if groupToDelete == "None" or not vendingGroups[groupToDelete] then updateNotification("Error", "Select/enter group!", 3) return end vendingGroups[groupToDelete] = nil updateNotification("Deleted", "Deleted " .. groupToDelete, 3) local groupsData = {} for groupName, vendingList in pairs(vendingGroups) do if groupName ~= "Default" then groupsData[groupName] = vendingList end end if writefile then writefile("VendingManager_Groups.json", HttpService:JSONEncode(groupsData)) end currentGroup = "Default"
  end
 end})
 
