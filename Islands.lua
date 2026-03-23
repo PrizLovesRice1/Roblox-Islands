@@ -25,6 +25,13 @@ end
 -- Load Rayfield in two steps
 local RayfieldSource = game:HttpGet('https://sirius.menu/rayfield')
 local RayfieldLoader = loadstring(RayfieldSource)
+
+if not RayfieldLoader then
+    print("ERROR: Failed to load Rayfield source")
+    print("Try restarting your game and executor")
+    return
+end
+
 local Rayfield = RayfieldLoader()
 
 if not Rayfield then
