@@ -2968,7 +2968,7 @@ BlockPrinterTab:CreateButton({
                 end
 
                 local finalFileName = saveFileName
-                if not finalFileName:endswith(".json") then
+                if not finalFileName:match("%.json$") then
                     finalFileName = finalFileName .. ".json"
                 end
 
