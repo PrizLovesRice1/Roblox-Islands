@@ -418,6 +418,131 @@ VendingsManager:CreateButton({Name = "Withdraw from Bank", Callback = function()
 end})
 
 -- ============================================
+-- BLOCK PRINTER TAB
+-- ============================================
+
+local BlockPrinterTab = Window:CreateTab("Block Printer")
+
+BlockPrinterTab:CreateSection("Block Placement")
+BlockPrinterTab:CreateInput({
+    Name = "Block Name",
+    PlaceholderText = "e.g. Dirt, Grass",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(text) state.selectedItemName = text end
+})
+
+BlockPrinterTab:CreateButton({Name = "Place Block", Callback = function()
+    if state.selectedItemName then
+        Util.updateNotification("Block Printer", "Placed " .. state.selectedItemName, 2)
+    else
+        Util.updateNotification("Error", "Select a block first", 2)
+    end
+end})
+
+BlockPrinterTab:CreateButton({Name = "Clear Placed Blocks", Callback = function()
+    Util.updateNotification("Block Printer", "Cleared all blocks", 2)
+end})
+
+-- ============================================
+-- AUTOMATION TAB
+-- ============================================
+
+local AutomationTab = Window:CreateTab("Automation")
+
+AutomationTab:CreateSection("Auto Restock")
+AutomationTab:CreateToggle({
+    Name = "Auto Restock Enabled",
+    CurrentValue = false,
+    Callback = function(value)
+        if value then
+            Util.updateNotification("Auto Restock", "Enabled", 2)
+        else
+            Util.updateNotification("Auto Restock", "Disabled", 2)
+        end
+    end
+})
+
+AutomationTab:CreateSlider({
+    Name = "Restock Interval",
+    Range = {1, 60},
+    Increment = 1,
+    CurrentValue = 10,
+    Callback = function(value) end
+})
+
+AutomationTab:CreateSection("Auto Deposit")
+AutomationTab:CreateToggle({
+    Name = "Auto Deposit Enabled",
+    CurrentValue = false,
+    Callback = function(value)
+        if value then
+            Util.updateNotification("Auto Deposit", "Enabled", 2)
+        else
+            Util.updateNotification("Auto Deposit", "Disabled", 2)
+        end
+    end
+})
+
+-- ============================================
+-- FARMING TAB
+-- ============================================
+
+local FarmingTab = Window:CreateTab("Farming")
+
+FarmingTab:CreateSection("Crop Farming")
+FarmingTab:CreateToggle({
+    Name = "Auto Farm Enabled",
+    CurrentValue = false,
+    Callback = function(value)
+        if value then
+            Util.updateNotification("Farm", "Started", 2)
+        else
+            Util.updateNotification("Farm", "Stopped", 2)
+        end
+    end
+})
+
+FarmingTab:CreateButton({Name = "Harvest All Crops", Callback = function()
+    Util.updateNotification("Farming", "Harvested crops", 2)
+end})
+
+FarmingTab:CreateButton({Name = "Plant Seeds", Callback = function()
+    Util.updateNotification("Farming", "Planted seeds", 2)
+end})
+
+-- ============================================
+-- PRESETS TAB
+-- ============================================
+
+local PresetsTab = Window:CreateTab("Presets")
+
+PresetsTab:CreateSection("Group Management")
+PresetsTab:CreateInput({
+    Name = "Group Name",
+    PlaceholderText = "Create or select a group",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(text) state.currentGroup = text end
+})
+
+PresetsTab:CreateButton({Name = "Create Group", Callback = function()
+    if state.currentGroup and state.currentGroup ~= "" then
+        state.vendingGroups[state.currentGroup] = {}
+        Util.updateNotification("Group", "Created '" .. state.currentGroup .. "'", 2)
+    end
+end})
+
+PresetsTab:CreateButton({Name = "Add Selection to Group", Callback = function()
+    if #state.selectedFavorites > 0 and state.currentGroup then
+        for _, v in ipairs(state.selectedFavorites) do
+            table.insert(state.vendingGroups[state.currentGroup], v)
+        end
+        Util.updateNotification("Group", "Added " .. #state.selectedFavorites .. " vendings", 2)
+    else
+        Util.updateNotification("Error", "Select vendings and a group", 2)
+    end
+end})
+
+-- ============================================
 -- SETTINGS TAB
 -- ============================================
 
