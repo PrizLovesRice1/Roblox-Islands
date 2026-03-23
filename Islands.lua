@@ -3,6 +3,8 @@
     Advanced automation and management
 ]]--
 
+local scriptSuccess, scriptError = pcall(function()
+
 local Players = game:GetService("Players")
 local RS = game:GetService("ReplicatedStorage")
 local WS = game:GetService("Workspace")
@@ -4382,4 +4384,10 @@ end})
 -- SCRIPT COMPLETE MESSAGE
 -- ============================================
 
--- Script loaded successfully
+end)
+
+if not scriptSuccess then
+    print("ERROR loading Islands Hub: " .. tostring(scriptError))
+else
+    print("Script loaded successfully")
+end
