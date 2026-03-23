@@ -546,7 +546,7 @@ end})
 -- SETTINGS TAB
 -- ============================================
 
-local SettingsTab = Window:CreateTab("Settings")
+SettingsTab = Window:CreateTab("Settings")
 
 SettingsTab:CreateSection("Performance & Controls")
 
