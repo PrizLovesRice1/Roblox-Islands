@@ -25,7 +25,7 @@ function IsTaken(Position)
 end
 
 -- Load Rayfield in two steps
-local RayfieldSource = game:HttpGet('https://sirius.menu/rayfield')
+local RayfieldSource = HttpService:GetAsync('https://sirius.menu/rayfield')
 local RayfieldLoader = loadstring(RayfieldSource)
 
 if not RayfieldLoader then
